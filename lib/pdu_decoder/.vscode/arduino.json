@@ -1,0 +1,7 @@
+{
+    "board": "arduino:avr:nano",
+    "configuration": "cpu=atmega328old",
+    "port": "COM23",
+    "sketch": "pdu.ino",
+    "programmer": "Arduino as ISP"
+}

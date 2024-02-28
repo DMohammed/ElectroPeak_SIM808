@@ -1,18 +1,32 @@
 #include <Arduino.h>
+#include <myOLED.h>
+#include <myGSM.h>
+#include <myGPS.h>
 
-// put function declarations here:
-int myFunction(int, int);
-
-void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+OLED mainOLED;
+GSM mainGSM;
+GPS mainGPS;
+String value;
+void setup()
+{
+  Serial.begin(115200);
+  mainGSM.begin();
 }
 
-void loop() {
-  // put your main code here, to run repeatedly:
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+void loop()
+{
+  mainGSM.resiveMessage();
+  if (Serial.available())
+  {
+    value = Serial.readStringUntil('\n');
+    if (value.startsWith("test"))
+    {
+      mainGSM.sendMessage("+989383827728", "testing");
+    }
+    else if (value.startsWith("debug"))
+    {
+      mainGSM.debug();
+    }
+  }
+  // delay(500);
 }
