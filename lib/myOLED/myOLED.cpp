@@ -19,7 +19,7 @@ bool OLED::begin()
     u8x8.setFont(u8x8_font_chroma48medium8_r);
     u8x8.clear();
     u8x8.drawString(0, 0, "ElectroPeak");
-    u8x8.drawString(0, 1, "SIM808 Traker");
+    u8x8.drawString(0, 1, "SIM808 Tracker");
     u8x8.refreshDisplay();
     delay(1000);
     return true;
