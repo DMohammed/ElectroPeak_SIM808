@@ -6,15 +6,24 @@
 class GPS
 {
 public:
-    bool begin();
-    void resiveMessage();
-    void test();
-
-    // bool getStateAlarm();
-
-    // void beeb(uint16_t with = 100, uint8_t times = 100);
+    bool decode(String value);
+    struct myGPSData // Latitude	Longitude	Altitude	Fix	Fix quality
+    {
+        // String Altitude;
+        String Latitude;
+        String Longitude;
+        // byte Status;
+        // byte SUv;
+        // bool North;
+        // bool East;
+        // byte Quality;
+        // float HDOP;
+    };
+    myGPSData GPSData;
 
 private:
+    String cash[3];
+    String fix(String value);
 };
 
 #endif

@@ -29,9 +29,9 @@ SoftwareSerial GSMSerial(rxPin, txPin);
 #define pduMode false
 SoftwareSerial GSMSerial(rxPin, txPin);
 #elif defined(__AVR_ATmega2560__) || defined(__AVR_ATmega1280__)
-#define GSMSerial Serial2
-#define rstPin 4
-#define enPin 5
+#define GSMSerial Serial1
+#define rstPin 22
+#define enPin 23
 #define speed 115200
 #define pduMode true
 #endif
@@ -45,6 +45,7 @@ public:
     void resiveMessage();
     bool sendMessage(String number, String value);
     void debug();
+    void live();
 
 private:
     String checker;
@@ -65,6 +66,8 @@ private:
     String serialRead(String value, String startOrEndWith, bool startOrEnd = true, byte numberOfLine = -1);
     void processing(String input, String text = "");
     byte smsChecker();
+    String getValue();
+    String getPos(bool type = false);
 };
 
 #endif

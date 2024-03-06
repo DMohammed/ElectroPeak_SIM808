@@ -1,11 +1,15 @@
 
 #include <Arduino.h>
 #include <myGSM.h>
+#include <myGPS.h>
 #include <pdu.h>
+#include <myOLED.h>
 
-#define debugMode
+// #define debugMode
 
 pdu main_pdu;
+GPS GPSGSM;
+OLED OLEDGSM;
 
 GSM::GSM()
 {
@@ -15,34 +19,43 @@ bool GSM::begin()
 {
     GSMSerial.begin(speed);
     // debug();
+    OLEDGSM.printOLED("Connecting...", 0, 2);
+
     if (!bootGSM())
-        while (true)
+        while (true) // Problem to boot
         {
-            /* code */
         }
     GSMSerial.flush();
+    OLEDGSM.clear();
+    OLEDGSM.printOLED("Connected", 0, 2);
     serialRead("AT&F", "OK");
     delay(10);
     if (pduMode)
     {
-        serialRead("AT+CMGF=0", "OK");
+        serialRead("AT+CMGF=0", "OK"); // PDU mode
         delay(10);
-        /*AT+CSCA?
-+CSCA: "+989350001400",145*/
-        SCAnumber = serialRead("AT+CSCA?", "+CSCA:");
+        SCAnumber = serialRead("AT+CSCA?", "+CSCA:"); // AT+CSCA? -> +CSCA: "+989350001400",145
         SCAnumber.remove(0, 8);
         SCAnumber = SCAnumber.substring(0, SCAnumber.indexOf('\"'));
     }
-
     else
-        serialRead("AT+CMGF=1", "OK");
-
+        serialRead("AT+CMGF=1", "OK"); // text Mode
     delay(10);
-
-    serialRead("AT+CNMI=1,2,0,0,0", "OK");
+    serialRead("AT+CGPSPWR=1", "OK");
+    delay(10);
+    serialRead("AT+CGPSOUT=0", "OK");
+    delay(10);
+    GSMSerial.flush();
     byte incomingSMS = smsChecker();
+    OLEDGSM.printOLED("SMS in SIM" + String(incomingSMS), 0, 3);
     if (incomingSMS == 0)
     {
+        serialRead("AT+CNMI=2,1,0,0,0", "OK");
+
+        GSMSerial.readStringUntil('\n');
+        GSMSerial.readStringUntil('\n');
+        GSMSerial.readStringUntil('\n');
+        GSMSerial.flush();
         return true;
     }
     else if (incomingSMS > 0)
@@ -79,33 +92,55 @@ bool GSM::begin()
                 }
             }
         }
-        serialRead("AT+CNMI=1,2,0,0,0", "OK");
+        serialRead("AT+CNMI=2,1,0,0,0", "OK");
         serialRead("AT+CMGD=1,4", "OK");
-
-        // debug();
+        GSMSerial.readStringUntil('\n');
+        GSMSerial.readStringUntil('\n');
+        GSMSerial.readStringUntil('\n');
+        GSMSerial.flush();
         return true;
     }
+    return false;
 }
 
 bool GSM::bootGSM()
 {
     Serial.println("********************************");
+
     pinMode(rstPin, OUTPUT); // pin NRESET GSM Set
     pinMode(enPin, OUTPUT);  // pin PWRKEY GSM set
 
     // digitalWrite(rstPin, HIGH); // NRESET Trigerd
     // delay(2000);
     digitalWrite(rstPin, HIGH); // NRESET Normal
+    digitalWrite(enPin, LOW);   // PWRKEY Normal
+    Serial.println("Test Connection");
+    GSMSerial.println("AT");
+    GSMSerial.println("AT");
+    delay(100);
+    while (GSMSerial.available())
+    {
+        checker = GSMSerial.readStringUntil('\n');
+        checker.trim();
+        Serial.println(checker);
+        if (checker.startsWith("OK"))
+        {
+            Serial.println("System is On");
+            return true;
+        }
+    }
+    Serial.println("********************************");
     delay(2000);
 GSMTRY:
     digitalWrite(enPin, HIGH); // PWRKEY Trigerd
     delay(3000);
     digitalWrite(enPin, LOW); // PWRKEY Normal
-
+    OLEDGSM.clear();
     Serial.println("Power SIM Key ON");
+    OLEDGSM.printOLED("Turn On GSM", 0, 3);
     while (true)
     {
-
+        cunterBootUp++;
         if (GSMSerial.available())
         {
             checker = GSMSerial.readStringUntil('\n');
@@ -114,11 +149,18 @@ GSMTRY:
             else if (checker.startsWith("NORMAL POWER DOWN"))
             {
                 Serial.println("NORMAL POWER DOWN");
+                OLEDGSM.printOLED("GSM is", 0, 5);
+                OLEDGSM.printOLED("Shout Down", 0, 6);
                 GSMSerial.flush();
                 goto GSMTRY;
             }
         }
         GSMSerial.println("AT");
+        if (cunterBootUp == 20)
+        {
+            GSMSerial.flush();
+            goto GSMTRY;
+        }
         delay(100);
     }
     // debug();
@@ -273,11 +315,11 @@ sendAgine:
 
 bool GSM::sendMessage(String number, String value)
 {
-    //     int cunter = 0;
-    //     checker = "";
-    // sendAgin1:
     Serial.println("Message to :" + number + "\t-" + value);
 sendAgin1:
+    GSMSerial.readStringUntil('\n');
+    GSMSerial.readStringUntil('\n');
+    GSMSerial.readStringUntil('\n');
     GSMSerial.flush();
     delay(10);
     if (pduMode)
@@ -400,23 +442,28 @@ void GSM::resiveMessage()
     if (GSMSerial.available())
     {
         /*
-+CMT: "+989383827728","","24/02/28,12:23:38+14"
++CMT: "+98123456789","","24/02/28,12:23:38+14"
 Test
         */
         checker = GSMSerial.readStringUntil('\n');
         checker.trim();
         Serial.print("_");
-        if (checker.startsWith("+CMT"))
+        if (checker.startsWith("+CMT:"))
         {
-
+            OLEDGSM.printOLED("New Message", 0, 3);
             Serial.println("New Message to resive");
             if (pduMode)
             {
                 checker = GSMSerial.readStringUntil('\n');
+
                 // #ifdef debugMode
                 Serial.println(checker);
                 // #endif
                 processing(checker);
+                OLEDGSM.printOLED("processed", 0, 4);
+                delay(200);
+                OLEDGSM.clear();
+                Serial.println("All done");
             }
             else
             {
@@ -424,6 +471,53 @@ Test
                 String mess = GSMSerial.readStringUntil('\n');
                 Serial.println(checker);
                 processing(checker, mess);
+                OLEDGSM.printOLED("processed", 0, 4);
+                delay(200);
+                OLEDGSM.clear();
+                Serial.println("All done");
+            }
+        }
+        else if (checker.startsWith("+CMTI:")) //+CMTI: "SM",
+        {
+            Serial.println("New Message to resive CMTI");
+            OLEDGSM.printOLED("New Message", 0, 3);
+            if (pduMode)
+            {
+                Serial.println(checker);
+                checker.remove(0, checker.indexOf(',') + 1);
+                checker.trim();
+                Serial.println(checker);
+                GSMSerial.println("AT+CMGR=" + checker);
+                while (true)
+                {
+                    if (GSMSerial.available())
+                    {
+                        checker = GSMSerial.readStringUntil('\n');
+                        Serial.println(checker);
+                        if (checker.length() > 15)
+                        {
+#ifdef debugMode
+                            Serial.println(checker);
+#endif
+                            processing(checker);
+                            OLEDGSM.printOLED("processed", 0, 4);
+                            delay(200);
+                            OLEDGSM.clear();
+                            Serial.println("All done");
+                            return;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                Serial.println(checker);
+                String mess = GSMSerial.readStringUntil('\n');
+                Serial.println(checker);
+                processing(checker, mess);
+                OLEDGSM.printOLED("processed", 0, 4);
+                delay(200);
+                OLEDGSM.clear();
             }
         }
         else
@@ -435,8 +529,10 @@ Test
 
 void GSM::processing(String input, String text)
 {
+#ifdef debugMode
     Serial.println(input);
     Serial.println(text);
+#endif
     if (text.length() < 1)
     {
         if (input.length() < 2)
@@ -454,14 +550,15 @@ void GSM::processing(String input, String text)
         Serial.println(main_pdu.PDUe.maxPart);
         if (main_pdu.PDUe.mess.equals(pass))
         {
-            sendMessage(main_pdu.PDUe.number, "myGPS Location");
+            delay(100);
+            Serial.println(getPos());
+            sendMessage(main_pdu.PDUe.number, "myGPS Location\n" + getPos());
+            delay(500);
+            serialRead("AT+CMGD=1,4", "OK");
         }
     }
     else
-    { /*
-+CMT: "+989383827728","","24/02/28,12:23:38+14"
-Test
- */
+    {
         Serial.print("Number: ");
         Serial.println(input.substring(input.indexOf('+'), input.indexOf(",") - 1));
         input.remove(0, 26);
@@ -472,19 +569,119 @@ Test
     }
 }
 
+String GSM::getPos(bool type)
+{
+    while (true)
+    {
+        GSMSerial.println("AT+CGPSSTATUS?");
+        delay(100);
+        while (true)
+        {
+            if (GSMSerial.available())
+            {
+                checker = GSMSerial.readStringUntil('\n');
+                // Serial.println(checker);
+                if (checker.startsWith("+CGPSSTATUS:")) //+CGPSSTATUS: Location
+                {                                       //"Unknown"
+                                                        //"Not Fix"
+                                                        //"2D Fix"
+                                                        //"3D Fix"
+                    checker.remove(0, 21);
+                    checker.trim();
+                    if (checker.startsWith("3D"))
+                    {
+                        if (type)
+                            return "3D Fix";
+                        else
+                            return getValue();
+                    }
+                    else if (checker.startsWith("2D"))
+                    {
+                        if (type)
+                            return "2D Fix";
+                        else
+                            return getValue();
+                    }
+                    else if (checker.startsWith("OK"))
+                    {
+                        break;
+                    }
+                    else if (checker.startsWith("Not"))
+                    {
+                        if (type)
+                            return "Not Fix";
+                        else
+                            break;
+                    }
+                    else if (checker.startsWith("Unknown"))
+                    {
+                        if (type)
+                            return "3D Fix";
+                        else
+                            break;
+                    }
+                    else
+                    {
+                        Serial.print('.');
+                    }
+                }
+            }
+        }
+        // Serial1.println("AT+CGPSSTATUS?");
+        GSMSerial.readStringUntil('\n');
+        GSMSerial.readStringUntil('\n');
+        GSMSerial.flush();
+        delay(3000);
+    }
+}
+void GSM::live()
+{
+    OLEDGSM.clear();
+    OLEDGSM.printOLED(getPos(true), 0, 5);
+}
+
+String GSM::getValue()
+{
+    GSMSerial.println("AT+CGPSOUT=3");
+    delay(100);
+    while (true)
+    {
+        if (GSMSerial.available())
+        {
+            checker = GSMSerial.readStringUntil('\n');
+            if (checker.startsWith("$GPGGA")) //$GPGGA,134423.000,3540.2997,N,05122.3770,E,1,11,0.96,1247.1,M,-
+            {
+                GSMSerial.println("AT+CGPSOUT=0");
+                delay(500);
+                GSMSerial.readStringUntil('\n');
+                GSMSerial.readStringUntil('\n');
+                GSMSerial.flush();
+
+                if (GPSGSM.decode(checker))
+                {
+                    return "https://www.google.com/maps/place/" + GPSGSM.GPSData.Latitude + "," + GPSGSM.GPSData.Longitude; // https://www.google.com/maps/place/35.70911333,51.39322667
+                }
+            }
+        }
+    }
+}
+
 byte GSM::smsChecker()
 {
-    String numberOFSMS = serialRead("AT+CPMS=\"SM\",\"SM\",\"SM\"", "+CPMS:");
     GSMSerial.readStringUntil('\n');
     GSMSerial.readStringUntil('\n');
     GSMSerial.readStringUntil('\n');
     GSMSerial.flush();
-
-    numberOFSMS = numberOFSMS.substring(numberOFSMS.indexOf(':') + 1, numberOFSMS.indexOf(','));
+    String numberOFSMS = serialRead("AT+CPMS?", "+CPMS:"); // +CPMS: "SM",0,15,"SM",0,15,"SM",0,15
+    GSMSerial.readStringUntil('\n');
+    GSMSerial.readStringUntil('\n');
+    GSMSerial.readStringUntil('\n');
+    GSMSerial.flush();
+    numberOFSMS.remove(0, numberOFSMS.indexOf(',') + 1);
+    numberOFSMS = numberOFSMS.substring(0, numberOFSMS.indexOf(','));
     numberOFSMS.trim();
     if (numberOFSMS.toInt() > 0)
     {
-        // Serial.println("There is a message : -" + numberOFSMS + "-");
         Serial.print("There is a message : ");
         Serial.println(numberOFSMS.toInt());
     }
@@ -511,14 +708,13 @@ void GSM::debug()
         {
             checker = Serial.readStringUntil('\t');
             if (checker.startsWith("end"))
+            {
+                Serial.println("Go to Main");
                 return;
+            }
+
             else
                 GSMSerial.println(checker);
-
-            // GSMSerial.write(Serial.read()); // Forward what Serial received to Software Serial Port
-            //                                 // //delay(500);
-            //                                 // GSMSerial.println(Serial.readString());
-            //                                 // GSM_Display.showText("\n");
         }
         while (GSMSerial.available())
         {
